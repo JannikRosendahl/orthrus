@@ -1,4 +1,5 @@
-[![DOI](https://zenodo.org/badge/852328574.svg)](https://doi.org/10.5281/zenodo.14641605)
+[![DOI](https://img.shields.io/badge/DOI-10.5281/zenodo.14641605-ed6a2f?style=flat&labelColor=gray)](https://doi.org/10.5281/zenodo.14641605)
+
 
 # ORTHRUS: Achieving High Quality of Attribution in Provenance-based Intrusion Detection Systems
 
