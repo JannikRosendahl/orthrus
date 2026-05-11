@@ -36,7 +36,7 @@ RUN conda install -y psycopg2 tqdm && \
                 wandb==0.16.6 chardet==5.2.0 nltk==3.8.1 igraph==0.11.5 \
                 cairocffi==1.7.0 wget==3.2
 
-RUN conda install -y pytorch==1.13.1 torchvision==0.14.1 torchaudio==0.13.1 \
+RUN conda install -y "mkl<2024" pytorch==1.13.1 torchvision==0.14.1 torchaudio==0.13.1 \
                 pytorch-cuda=11.7 -c pytorch -c nvidia
 
 RUN pip install torch_geometric==2.5.3 --no-cache-dir && \
