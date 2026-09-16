@@ -135,13 +135,117 @@ datalist.append([i] + [stringtomd5(i)] + subject_obj2hash[i] + [index_id])
 subject_uuid2hash[i] = stringtomd5(i)
 ```
 
-- **All node types are keyed on `sha256(uuid)`** — one node per entity. `stringtomd5` is
-  named for MD5 but calls `hashlib.sha256` (`provnet_utils.py:45`).
+- **All node types are keyed on `sha256(uuid)`** — one node per *uuid*. `stringtomd5` is
+  named for MD5 but calls `hashlib.sha256` (`provnet_utils.py:45`). "One node per entity" holds
+  only as far as the uuid is one entity, which on THEIA it is not always — §1.3.1 measures it.
 - `index_id` is assigned incrementally **during import**, across the three tables in the
   order **netflow → subject → file** (`cadets_e3.py:251-265`). It is the integer the
   model uses as node id.
 - The `len(i) != 64` guard on every insert loop selects uuid keys out of the
   bidirectional `{uuid: [hash, …], hash: uuid}` dicts.
+
+#### 1.3.1 Does the uuid key merge distinct records? Measured
+
+Two different questions hide behind "keyed on `sha256(uuid)`":
+
+1. **Hash collisions** — two *different* uuids hashing to the same digest. For SHA-256 over
+   ~2.5 M inputs the birthday bound is on the order of $10^{-65}$. Not a real concern, and not
+   checked further.
+2. **UUID ambiguity** — the *same* uuid appearing in more than one distinct CDM record. This is
+   real in DARPA TC (see
+   [`code/scratchpad/data_import/notes/theia-node-uuid-ambiguity-rate.md`](../../../code/scratchpad/data_import/notes/theia-node-uuid-ambiguity-rate.md)),
+   and because identity *is* the uuid, every such group necessarily collapses into one node.
+
+The importer makes the collapse explicit — a plain dict assignment keyed on the uuid, so the
+**last record parsed wins**, followed by exactly one row per key:
+
+```python
+# theia_e3.py:118-123
+if "avro.cdm18.FileObject" in line:
+    Object_uuid = re.findall('avro.cdm18.FileObject":{"uuid":"(.*?)",(.*?)"filename":"(.*?)"', line)
+    file_obj2hash[Object_uuid[0][0]] = Object_uuid[0][-1]   # <- overwrite, no conflict check
+
+# theia_e3.py:127-131
+for i in file_obj2hash.keys():
+    if len(i) != 64:
+        datalist.append([i] + [stringtomd5(i), file_obj2hash[i]] + [index_id])
+```
+
+So *N* CDM records sharing a uuid become **one node with one `index_id`**, carrying whichever
+record's attributes were parsed last. `[read]`
+
+Measured against our lossless import, which keeps every record byte-exact and flags the
+duplicates rather than resolving them `[measured]`:
+
+| Dataset | Table | Rows | Distinct uuids | Rows absorbed | uuids with >1 record |
+| --- | --- | ---: | ---: | ---: | ---: |
+| CADETS E3 | file | 2,305,212 | 2,305,159 | 53 | 53 |
+| CADETS E3 | subject | 224,629 | 224,629 | **0** | 0 |
+| CADETS E3 | netflow | 155,322 | 155,322 | **0** | 0 |
+| THEIA E3 | file | 1,031,112 | 1,021,955 | 9,157 | 9,105 |
+| THEIA E3 | subject | 279,391 | 279,369 | 22 | 12 |
+| THEIA E3 | netflow | 186,102 | 186,100 | 2 | 2 |
+
+**No cross-type collisions.** Not one uuid appears under more than one of subject / file /
+netflow, in either dataset. So the `if/elif/else` endpoint resolution (§1.5) is never actually
+ambiguous and a node's *type* is never decided by the branch order. That is the severe failure
+mode, and it does not occur.
+
+**CADETS is unaffected in practice** — *by this mechanism*. All 53 of its merged file uuids carry **no path at all**
+(they are the near-empty placeholder records described in
+[`cadets-event-uuid-collision.md`](../../../code/scratchpad/data_import/notes/cadets-event-uuid-collision.md)),
+so there is nothing for the overwrite to lose.
+
+Note the scope: that covers duplicate *FileObject records*. CADETS does not take file paths from
+those records at all — it scrapes `predicateObjectPath` from **Event** lines into the same kind
+of overwriting dict (`cadets_e3.py:147`, `file_obj2hash[object_uuid] = file_obj_name`), so a
+CADETS file node ends up labelled by the last *event* that mentioned it. That is a separate
+mechanism with the same shape, already recorded in §2.1, and it is not measured here.
+
+⚠️ **THEIA is not.** 9,105 file uuids carry more than one record, and **9,073 of them hold two
+or more genuinely different paths** (not merely a NULL later filled in); 8,945 differ in the
+*basename* as well. The uuid tracks the **inode, not the path**, so a rename re-uses it:
+
+```
+0100D00F-0600-2E00-0000-00002F8FC12E
+    /home/admin/.cache/mozilla/firefox/…/9e35cab547e745a457c760856fa55ea4.png
+    /home/admin/.cache/mozilla/firefox/…/9e35cab547e745a457c760856fa55ea4.png.tmp
+0100D00F-0B12-1E00-0000-000057117400
+    /var/log/cups/access_log.1.gz
+    /var/log/cups/access_log.8.gz
+```
+
+These are atomic-write (`write .tmp` → `rename`) and log-rotation patterns — the same inode
+under successive names. ORTHRUS represents the pair as one node labelled with one of the two
+names, and the rename itself is not representable at all.
+
+⚠️ **Which name wins is not determined by the data.** All 9,073 conflicting uuids span **more
+than one input JSON file**, and input files are discovered with `glob.glob(f"{filepath}/*json*")`
+(§1) — an unordered, filesystem-dependent listing. Two imports of the same corpus on different
+machines can therefore label these nodes differently, and nothing records which reading was
+used. This compounds §5.8: not only is the file *set* unrecorded, the file *order* is
+load-bearing.
+
+**Scale, and how far it reaches.** 9,105 of 1,021,955 THEIA file nodes are merged (**0.89%**),
+against 0.002% on CADETS. Node counts understate the reach, though, because the merged objects
+are busy ones. Counting the events ORTHRUS actually admits (the 10-type allowlist plus the
+endpoint rule) that have at least one endpoint on a merged node `[measured]`:
+
+| Dataset | Admitted events | Touching a merged node | Share |
+| --- | ---: | ---: | ---: |
+| CADETS E3 | 18,699,410 | 5,874 | 0.031% |
+| THEIA E3 | 39,922,077 | **1,482,052** | **3.712%** |
+
+So on THEIA roughly **one edge in twenty-seven** that reaches the model has an endpoint whose
+label was picked arbitrarily between two real paths. That is a caveat rather than a headline,
+but it is not negligible, and it lands on exactly the objects a rename touches — while the file
+feature *is* the path (§1.6).
+
+**ΔK / ΔPIDSMaker.** PIDSMaker keys nodes identically (`sha256(uuid)`), so it inherits this
+verbatim. KAIROS does not: it keys on `sha256(label)`, which merges *far* more aggressively
+(613,713 uuid rows → 268,242 entities on CADETS E3) and for an entirely different reason. The
+two systems fail in opposite directions — KAIROS collapses distinct entities that share a name,
+ORTHRUS keeps one entity that changed its name.
 
 ### 1.4 Field extraction, per dataset
 
@@ -506,12 +610,20 @@ anywhere. There is no record of how many raw records were dropped.
 
 ## 5. Findings that can change downstream outcomes
 
-### 5.1 Node identity is the UUID — one node per entity
+### 5.1 Node identity is the UUID — one node per entity, with one measured exception
 
 `sha256(uuid)` everywhere (§1.3). Every process instance is its own node with its own
 memory slot and neighbour list; process lineage survives. This is the semantics a
 temporal model assumes, and it is what makes ORTHRUS a usable reference point for a
 memory-based comparison.
+
+The exception, quantified in §1.3.1: where DARPA re-uses a uuid across records, the dict keyed
+on it silently merges them. Subjects and netflows are effectively unaffected (0 merged on
+CADETS; 12 and 2 uuids on THEIA), so the process-lineage claim above stands. **File** nodes on
+THEIA do not: 9,105 uuids absorb more than one record and 9,073 of those hold two or more
+genuinely different paths — the uuid tracks the inode, so a rename re-uses it — and **3.71% of
+THEIA's admitted events** have an endpoint on such a node. There are no cross-type collisions in
+either dataset, so node *type* is never wrong.
 
 ### 5.2 ⚠️ Netflow remote address is destroyed on THEIA, and the loss is ORTHRUS's own
 
