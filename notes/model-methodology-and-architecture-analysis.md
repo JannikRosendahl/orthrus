@@ -88,7 +88,7 @@ little.*
 There is no per-node state that survives step 6 other than the neighbour buffer itself.
 Node representations are recomputed from static features every forward pass.
 
-Decoder: edge-type prediction (`config/orthrus.yml:84`, `predict_edge_type` /
+Decoder: edge-type prediction (`config/orthrus.yml:55`, `predict_edge_type` /
 `edge_mlp`) `[read]`.
 
 ---
@@ -122,8 +122,16 @@ sufficient" — is therefore supported only in the weak sense that *ORTHRUS's wh
 pipeline beats KAIROS's whole pipeline*. **No published experiment varies memory
 alone.** That gap is this thesis's opening.
 
-`[unverified]` The ablation harness itself has not been located in the code. Worth doing:
-enumerate mechanically what the swap changes, to turn this argument into a diff.
+**Resolved: the harness is not in the artifact.** `encoder_factory` (`factory.py:43-91`)
+constructs `GraphTransformer` + `OrthrusEncoder` unconditionally, with no branch, no registry and
+no config key that could select an alternative encoder `[read]`. There is no memory module
+anywhere in `src/`, and the string `kairos` does not occur in `src/`, `config/` or `README.md`.
+The ablation was run with code that was not released.
+
+The paper's claim is also narrower than the field's reading of it: the FP increase is attributed
+to *substituting the encoder*, and the only memory-specific statement is that a per-node memory
+costs more **RAM**. See [`the-published-ablation.md`](the-published-ablation.md), which supersedes
+this subsection.
 
 ---
 
@@ -131,7 +139,7 @@ enumerate mechanically what the swap changes, to turn this argument into a diff.
 
 | Property | Value | Source |
 | --- | --- | --- |
-| Window size | 15.0 min | `config/orthrus.yml:5` `[import-note]` |
+| Window size | 15.0 min by default, but **overridden to 1.0 min for CLEARSCOPE_E3 and CADETS_E5** by the repo's own reproduction commands | `config/orthrus.yml:5`, `README.md:90`,`:95` `[import-note]` |
 | Window cut | first 1024-edge boundary **after** 15 min elapsed → data-dependent length | `build_orthrus_graphs.py:107-146` `[import-note]` |
 | Day tail | trailing partial window of each day **silently dropped** (no last-batch branch) | same |
 | Neighbour sampling | temporal (`LastNeighborLoader`, last-N by insertion order) | `src/temporal.py:25-101` `[read]` |
@@ -188,12 +196,33 @@ direct motivation for this thesis's lossless import.
 
 ---
 
-## 7. Open items
+## 7. Protocol defects found after this note was first written
 
-- Locate the ablation harness; enumerate exactly what the "Kairos TGN encoder" swap
-  changes (§3).
-- Confirm whether `use_node_feats_in_gnn: False` paths are ever exercised, i.e. whether
-  the encoder can run without the Word2vec projection at all.
-- Compare against PIDSMaker's reimplementation of ORTHRUS — the configs are close but
-  not identical, and if they diverge materially every VELOX comparison number is
-  affected. See the PIDSMaker note.
+Three findings from the deep pass belong beside the architecture, because they bear on every
+number ORTHRUS reports rather than on how it computes embeddings:
+
+- ⚠️ **The reported epoch is selected on the test set.** `standard_evaluation` scores every saved
+  checkpoint and keeps the best by test MCC (`detection/evaluation.py:19`,`:46-49`); validation
+  supplies only the loss threshold. Details in
+  [`metrics-splits-and-reported-results.md`](metrics-splits-and-reported-results.md) §2.4.
+- ⚠️ **`use_kmeans: True` discards the threshold** and caps detections at `kmeans_top_K = 20`
+  nodes for the whole test set (`detection/evaluation_utils.py:586-613`). The authors' own
+  results table shows the cap operating. See
+  [`detection-thresholding-and-ground-truth.md`](detection-thresholding-and-ground-truth.md) §2.2.
+- ⚠️ **The neighbour sampler is never reset at inference**, so the validation split's adjacency
+  is still present while the test split is scored (`detection/orthrus_gnn_testing.py:115-117`
+  against the single `reset_state()` call at `orthrus_gnn_training.py:57`). See
+  [`objective-and-training-lifecycle.md`](objective-and-training-lifecycle.md) §2.3.
+
+## 8. Open items
+
+- ~~Locate the ablation harness~~ — **resolved**, §3: it is absent from the artifact.
+- ~~Confirm whether `use_node_feats_in_gnn: False` paths are ever exercised~~ — **resolved**: the
+  flag gates construction of `src_linear`/`dst_linear` (`encoders.py:45-46`) while `forward` uses
+  them unconditionally (`:64`), so setting it `False` raises `AttributeError`. The path cannot
+  run.
+- Compare against PIDSMaker's reimplementation of ORTHRUS — still open, and now sharper: the
+  importers differ materially in attribute extraction (see
+  [`orthrus-data-import-analysis.md`](orthrus-data-import-analysis.md) §5.2-5.3), so
+  PIDSMaker-ORTHRUS and standalone ORTHRUS are not the same system and their numbers are not
+  interchangeable. This is the remaining input to `PLAN_RW.md` B2.

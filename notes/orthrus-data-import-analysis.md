@@ -5,7 +5,11 @@ Scope, as in the companion KAIROS and PIDSMaker notes: **what enters the model**
 records are selected, what becomes a node or an edge, which attributes survive, and every
 filtering or transformation decision that can move downstream results.
 
-Provenance format: `path:line`. Repo HEAD at analysis time: `e7f25df`.
+Provenance format: `path:line`. Analysed at commit
+`0e11f7327c268eb40ae254e7ad446633fd5beec1` (2026-09-15); the cited lines were re-checked
+against that checkout during the deep pass, and no upstream code changed in between.
+`[measured]` items come from
+[`code/scratchpad/orthrus_analysis.ipynb`](../../../code/scratchpad/orthrus_analysis.ipynb).
 
 ## Sources
 
@@ -509,19 +513,81 @@ memory slot and neighbour list; process lineage survives. This is the semantics 
 temporal model assumes, and it is what makes ORTHRUS a usable reference point for a
 memory-based comparison.
 
-### 5.2 ⚠️ Netflow remote address is corrupt in four of six datasets
+### 5.2 ⚠️ Netflow remote address is destroyed on THEIA, and the loss is ORTHRUS's own
 
-`res[0][0]` / `res[0][1]` index into the uuid string (§1.4). ORTHRUS features netflow
-nodes on `remote_ip` alone (`use_port: False`), so for THEIA E3/E5 and CLEARSCOPE E3/E5
-every netflow node's entire feature content is **one hex character** — roughly 16 distinct
-netflow features across the dataset. Any result involving network-side detection on those
-four datasets should be treated as unsupported until re-run with the field fixed.
+`res[0][0]` / `res[0][1]` index into the uuid string (§1.4). ORTHRUS features netflow nodes on
+`remote_ip` alone (`use_port: False`, `config/orthrus.yml:28`), so that column *is* the node's
+entire feature content.
 
-### 5.3 ⚠️ Subject features are degenerate in three of six datasets
+Measured against our lossless import and, as a control, against PIDSMaker's import of the same
+corpus (probe P1 in
+[`code/scratchpad/orthrus_analysis.ipynb`](../../../code/scratchpad/orthrus_analysis.ipynb)):
 
-CADETS E3/E5 store `path = None` and feed `"None <exec>"`; CLEARSCOPE E3 additionally
-truncates the command line to its first character (§3.1). Only THEIA E3/E5 and
-CLEARSCOPE E5 carry a meaningful process label.
+| Dataset | Substrate | netflow nodes | distinct remote addresses | under ORTHRUS's uuid indexing |
+| --- | --- | ---: | ---: | ---: |
+| CADETS E3 | lossless | 155,322 | 1,170 | *(n/a — CADETS reads the field correctly)* |
+| CADETS E3 | PIDSMaker | 155,322 | 1,170 | *(n/a)* |
+| THEIA E3 | lossless | 186,102 | **202** | **4** |
+| THEIA E3 | PIDSMaker | 186,100 | **202** | 4 |
+| CLEARSCOPE E3 | PIDSMaker | 279,694 | **1** | 1 |
+
+Read this as three different situations, not one defect:
+
+- **THEIA E3 — a real, unforced defect.** All 186,102 netflow nodes carry a remote address and
+  there are **202 distinct** ones. PIDSMaker's `.get()`-based extraction recovers all 202 from
+  the same records, so the data is plainly present. ORTHRUS's uuid indexing yields
+  **4 distinct values** on the same nodes. Its entire netflow feature space on THEIA E3 is four
+  symbols.
+- **CLEARSCOPE E3 — a genuine capture limitation.** PIDSMaker, reading the field properly, also
+  finds exactly **one** distinct value. The paper's remark that "CLEARSCOPE lacks […] remote
+  addresses of netflows" (`resources/ORTHRUS.txt:1997-1998`) is **correct**, and no importer
+  could have done better.
+- **CADETS E3 — unaffected.** `cadets_e3.py:37-48` reads all four fields from one regex, and our
+  import and PIDSMaker's agree on 1,170 distinct remote addresses.
+
+So the defect is real but it is narrower than "corrupt in four of six datasets": it applies where
+the data exists, which of the E3 corpora means THEIA. E5 and CLEARSCOPE E5 share the same code
+path and are presumed affected wherever their captures carry the field, but they are not imported
+here and are not asserted `[unverified]`.
+
+Any ORTHRUS result involving network-side detection on THEIA should be treated as unsupported
+until re-run with the field fixed.
+
+### 5.3 Subject features are degenerate on CADETS and CLEARSCOPE — because the capture is
+
+This was previously recorded as an implementation defect on a par with §5.2. Measurement does not
+support that reading, and the distinction matters for how the thesis cites it.
+
+CADETS E3/E5 store `path = None` and feed `"None <exec>"` (§1.4). But the CADETS capture carries
+no subject path *at all*: our lossless import, which stores `Subject` records faithfully, finds
+**0 of 224,629** subjects with a path, and PIDSMaker — which reads `properties.map.path` — finds
+**0 of 224,146** (probe P2):
+
+| Dataset | Substrate | subjects | with a path | distinct paths | distinct commands |
+| --- | --- | ---: | ---: | ---: | ---: |
+| CADETS E3 | lossless | 224,629 | **0** | 0 | 0 |
+| CADETS E3 | PIDSMaker | 224,146 | **0** | 0 | 130 |
+| THEIA E3 | lossless | 279,391 | 278,385 | 168 | 1,569 |
+| THEIA E3 | PIDSMaker | 278,363 | 278,363 | 168 | 1,569 |
+| CLEARSCOPE E3 | PIDSMaker | 12,469 | **0** | 0 | 44 |
+
+CADETS `Subject` records also carry no `cmdLine`; the executable name that both ORTHRUS and
+PIDSMaker store is scraped from **`Event`** records instead (§1.1, §2.1), and there are only
+**130 distinct** such names in the whole corpus. ORTHRUS's `"None <exec>"` is therefore the best
+label available on CADETS, not a mistake.
+
+CLEARSCOPE E3 likewise has no subject path in PIDSMaker's import either. What *is* an ORTHRUS
+defect there is the separate truncation of the command line to its first character
+(`clearscope_e3.py:81`, §3.1) — PIDSMaker stores 44 distinct commands where ORTHRUS stores one
+character each.
+
+THEIA E3 does carry real subject paths (278,385 of 279,391), though only **168 distinct** ones,
+which bounds how much a path-based featuriser can distinguish there regardless of implementation.
+
+**Consequence for the thesis.** The degeneracy is real and it limits every system trained on
+CADETS — including this one, which inherits the same label source for its executable task — but
+it must be attributed to the dataset, not used as evidence of ORTHRUS's sloppiness. §5.2 is the
+implementation defect; §5.3 is a property of DARPA's capture.
 
 ### 5.4 Unconditional edge fusion destroys event multiplicity
 
@@ -529,12 +595,18 @@ CLEARSCOPE E5 carry a meaningful process label.
 not comparable to the raw logs, burst/frequency signal is removed, and a temporal model
 sees one update where the log had thousands. There is no flag to turn this off.
 
-### 5.5 Windows are batch-quantized, and the day's tail is dropped
+### 5.5 Windows are batch-quantized, the day's tail is dropped, and 15 min is not universal
 
 A window closes at the first 1024-edge boundary after 15 minutes, and the final partial
 window of every day is never written (§1.7). Both the window length distribution and the
 per-day coverage are therefore artifacts of the batching, not of the configured window
 size.
+
+⚠️ **The 15-minute figure is the default, not the protocol.** `config/orthrus.yml:5` sets
+`time_window_size: 15.0`, but the repository's own reproduction commands override it to `1.0` for
+CLEARSCOPE_E3 and CADETS_E5 (`README.md:90`, `:95`), along with per-dataset dropout, hidden/output
+dimensions, learning rate, epoch count and seed (`:80-95`). Any claim of the form "ORTHRUS uses
+15-minute windows" holds for four of the six documented runs and is false for two.
 
 ### 5.6 Two label pipelines, only one of which reaches the model
 
@@ -555,11 +627,19 @@ comparison needs a corpus restricted to train.
 `glob.glob(f"{filepath}/*json*")` (§1). Two runs over differently-populated directories
 produce different databases with no record of the difference.
 
-### 5.9 Test days are not strictly after train days
+### 5.9 CADETS_E3's test days are not strictly after its train days
 
-CADETS_E3 trains on days 3–10 and tests on day 6; CLEARSCOPE_E3 likewise (§1.7).
-Defensible for a per-window anomaly detector, but the split is not chronological and does
-not support claims about temporal generalization.
+CADETS_E3 trains on days 3–10 and tests on day 6, which sits inside that range (§1.7).
+
+⚠️ **Correction.** This note previously added "CLEARSCOPE_E3 likewise". That is wrong:
+CLEARSCOPE_E3 tests on days 11–12, which *do* follow its training days 3–10. What CLEARSCOPE_E3
+and CADETS_E3 actually share is a **validation** day (2) that precedes the whole training range —
+a different, milder oddity. THEIA_E3 is chronological throughout. The distinction is asserted in
+probe P6 of [`code/scratchpad/orthrus_analysis.ipynb`](../../../code/scratchpad/orthrus_analysis.ipynb)
+so it cannot silently regress.
+
+The CADETS_E3 split is defensible for a per-window anomaly detector — no single graph is both
+trained and tested on — but it does not support claims about temporal generalisation.
 
 ---
 
