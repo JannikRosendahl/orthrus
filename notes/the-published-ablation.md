@@ -15,6 +15,24 @@ analysis. `[unverified]` = inference or argument, not confirmed by execution; ne
 
 ---
 
+> **UPDATE 2026-09-16 — the harness was found, in VELOX's artifact.**
+> `scripts/run_orthrus_ablation.sh` on the upstream `velox` branch
+> (`upstream/velox` @ `54f687c`) reconstructs all four Table 6 ablations. It does not
+> overturn this note's conclusion, and it settles §6's first open item. Its "Encoding"
+> arm is
+> `--detection.gnn_training.encoder.tgn.use_memory=True --detection.gnn_training.decoder.predict_edge_type.used_method=kairos`,
+> so the swap **turns node memory on** *and* changes the edge-type decoder — two factors
+> at once. §3 below reconstructs the swap by inference; that inference is now partly
+> confirmed (memory is in it) and partly superseded (a decoder variant is in it too).
+> The confound argument in §5 stands, and is now evidenced by the script rather than
+> argued from absence. Featurisation is not touched by the arm, which answers §6's
+> first bullet. Note the script is stale against that branch's schema —
+> `src/config.py:232-236` defines no `used_method` under `predict_edge_type` — so it is
+> a leftover, not a runnable reconstruction. Details:
+> [`related-work/PIDSMaker/notes/velox/the-ablation-behind-the-claim.md`](../../PIDSMaker/notes/velox/the-ablation-behind-the-claim.md) §2a.
+>
+> The sentence below — "not in this repository" — remains true of *this* repository.
+
 ## 0. Answer in one paragraph
 
 The ablation on which the field's "memory is unnecessary" reading rests is not in this
