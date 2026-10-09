@@ -72,6 +72,14 @@ little.*
 
 ---
 
+> **ADDENDUM 2026-10-09 — and the ordering is not temporal either.** Inside a window the edges
+> reach the loader in `networkx` adjacency order (grouped by source node), not time order, so the
+> "last N" are the last *inserted*; 97–99% of edges follow a later edge, and on the test splits
+> ~11% of attended neighbour edges lie after the edge being scored. See
+> [`graph-transformation-and-featurisation.md`](graph-transformation-and-featurisation.md) §2.6
+> and [`notes/orthrus-replay-and-stream-order.md`](../../../notes/orthrus-replay-and-stream-order.md) §4–5.
+> The fork's `src/` is unchanged from `0e11f73` to `e7cab78`, so every line reference here holds.
+
 ## 2. What the encoder does compute
 
 `[read]`, `src/encoders.py:22-88`:

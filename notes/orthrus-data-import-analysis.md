@@ -627,6 +627,16 @@ either dataset, so node *type* is never wrong.
 
 ### 5.2 ⚠️ Netflow remote address is destroyed on THEIA, and the loss is ORTHRUS's own
 
+> **CORRECTION 2026-10-09 — the defect is in the artifact, not in the published results.**
+> ORTHRUS's README sends users to PIDSMaker's pre-built dumps (`README.md:27`, `:38`), and
+> replaying ORTHRUS's graph construction over `pidsmaker-theia-e3` reproduces the paper's
+> per-split node counts exactly (Table 1, `resources/ORTHRUS.txt:166-235`). In that dump all
+> 186,100 netflows carry the true remote address, equal to our lossless import on every node.
+> So `theia_e3.py:31-33` is a real bug of the shipped importer, but the THEIA numbers in the
+> paper were not computed on its output. The same holds for the CADETS UNIX-socket branch
+> (`cadets_e3.py:55-68`): the dump keeps the 1,986,286 sockets as *file* nodes. Measurements:
+> [`notes/orthrus-replay-and-stream-order.md`](../../../notes/orthrus-replay-and-stream-order.md) §1–2.
+
 `res[0][0]` / `res[0][1]` index into the uuid string (§1.4). ORTHRUS features netflow nodes on
 `remote_ip` alone (`use_port: False`, `config/orthrus.yml:28`), so that column *is* the node's
 entire feature content.

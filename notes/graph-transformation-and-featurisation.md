@@ -109,6 +109,17 @@ order. Checked because run boundaries depend on it.
 
 ### 2.5 The cost of §2.3 and §2.4, measured
 
+> **CORRECTION 2026-10-09 — the fusion figures below understate fusion.** The probe ran over
+> the lossless import, which never reverses an edge; ORTHRUS's data is reversed at import for
+> 10 types (`src/config.py:600-613`), and fusion is per *directed* (src, dst) pair. A
+> `READ, WRITE, READ` on one file is one pair and three edges unreversed, but two pairs and two
+> edges reversed (the reads fuse). Replaying the graph construction over the PIDSMaker dumps
+> ORTHRUS actually ran on — which reproduces the paper's Table 1 node counts exactly — gives
+> CADETS 18,205,696 windowed events → **5,634,575** edges (**69.1%** fused) and THEIA
+> 39,677,952 → **11,581,028** (**70.8%**). End to end the model sees **13.6%** (CADETS) and
+> **8.8%** (THEIA, three splits; day 11 is unused) of the recorded events, not one sixth.
+> Details: [`notes/orthrus-replay-and-stream-order.md`](../../../notes/orthrus-replay-and-stream-order.md) §3.
+
 `[measured]` Replaying ORTHRUS's exact windowing and fusion over our lossless import, with its
 type allowlist and endpoint rule applied (probe P3/P4 in the notebook):
 
@@ -128,6 +139,22 @@ The fusion figures supersede the whole-day approximation in
 [`notes/event-type-filtering-extent.md`](../../../notes/event-type-filtering-extent.md), which
 fused over UTC days rather than ORTHRUS's batch-quantised windows and therefore reported a
 lower bound.
+
+### 2.6 ⚠️ Edge order inside a window is adjacency order, not time (added 2026-10-09)
+
+`[read]` Each window is stored as a `networkx.MultiDiGraph` (`build_orthrus_graphs.py:206-222`)
+and turned into the model's `TemporalData` by iterating `graph.edges(data=True, keys=True)`
+(`edge_featurization/embed_edges_feature_word2vec.py:76-94`). That iteration yields edges
+grouped by **source node** (node-insertion order, i.e. first appearance as src or dst), then by
+destination (first `add_edge`), then insertion order. Nothing in `src/` sorts by `t` afterwards;
+`TemporalDataLoader` just slices.
+
+`[measured]` 97.0% (CADETS) and 99.2% (THEIA) of edges reach the model after an edge of the same
+window with a later timestamp; median per-window lag ≈ 8 min. Because `LastNeighborLoader`'s
+"last N" is the highest insertion counter (`temporal.py:89-97`), on the test splits 11.2% / 11.0%
+of attended neighbour edges lie in the future of the edge being scored. Order checked against
+`networkx` itself on sampled windows. Details:
+[`notes/orthrus-replay-and-stream-order.md`](../../../notes/orthrus-replay-and-stream-order.md) §4–5.
 
 ---
 

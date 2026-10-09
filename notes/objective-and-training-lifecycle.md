@@ -142,6 +142,18 @@ there is none — the reset clears the sampler.
 
 ### 2.3 ⚠️ At inference it is never reset, so validation state leaks into test
 
+> **CORRECTION 2026-10-09 — training's buffers leak too, and the leak is measured.** The loader
+> is not fresh when testing starts: `save_model` pickles it with every checkpoint
+> (`data_utils.py:254-255`) and `load_model` restores it (`data_utils.py:264-265`, called at
+> `orthrus_gnn_testing.py:109`). So validation starts from the buffers the training pass left,
+> and test from those validation left. The counter alignment with `full_data` (train, val, test
+> concatenated, `data_utils.py:11-32`) depends on exactly this carry-over. Replayed over the data
+> ORTHRUS ran on: 1.9% (CADETS) / 2.4% (THEIA) of the test split's attended neighbour edges come
+> from the training split; on CADETS, whose split is not chronological, validation day 2 attends
+> to 227,380 training edges of days 3–10 and test day 6 to 430,976, and 202,069 test-time
+> attended edges lie more than a day in the future. Details:
+> [`notes/orthrus-replay-and-stream-order.md`](../../../notes/orthrus-replay-and-stream-order.md) §5.
+
 `[read]` `reset_state` is called in exactly one place in the whole repository — the training
 loop above (grep over `src/` returns `temporal.py:35,99`, `encoders.py:87-88`,
 `orthrus_gnn_training.py:57` and nothing else).
@@ -204,9 +216,11 @@ results could not be replicated exactly without `PYTHONHASHSEED=0`.
   with no imbalance correction. Any comparison of ORTHRUS's scores against a differently-shaped
   objective (this thesis's executable classification) has to account for the fact that its score
   distribution is dominated by edge-type frequency, not by behaviour.
-- **Nothing persists across edges.** A TGN comparison that claims to add "memory" to ORTHRUS is
-  adding the first per-node state the system has ever had — there is no weaker variant to
-  degrade to, which makes ORTHRUS a clean zero-state baseline.
+- **No per-node vector persists across edges** — but the neighbour buffers do, across windows,
+  days, and (via the checkpoint) from training into validation and test (§2.3 correction). A TGN
+  comparison that adds "memory" to ORTHRUS adds the first per-node *learned* state; ORTHRUS is a
+  zero-memory baseline, not a zero-state one. (Corrected 2026-10-09; read "Nothing persists
+  across edges" in older text accordingly.)
 - The **validation-into-test sampler leak** (§2.3) and the **test-set checkpoint selection**
   (§1.5) are independent protocol defects that both flatter reported numbers. Neither is
   mentioned in the paper. They belong in the shortcomings list next to the non-chronological

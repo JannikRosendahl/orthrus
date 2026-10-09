@@ -45,6 +45,16 @@ vector costs more **RAM** `[paper]`. So the literature's "ORTHRUS shows memory i
 is stronger than what ORTHRUS says, and what ORTHRUS does say is not reproducible from its
 artifact.
 
+> **CORRECTION 2026-10-09 — the paper does claim a performance cost of memory.** §4.3 says
+> KAIROS's "encoder's reliance on state memory leads to significantly higher memory usage
+> (nearly threefold) and weaker performance, as shown in the 'Encoding' ablation in Table 7",
+> and that "our simple temporal sampling approach is sufficient"
+> (`resources/ORTHRUS.txt:549-558`). The sentence above holds for the ablation *discussion*
+> (`:1755-1760`), which attributes the false positives to substituting the encoder; it does not
+> hold for the paper as a whole. What stands is the narrower point: the experiment offered for
+> the memory claim swaps whole encoders (and, per the VELOX-branch script, the decoder too), so
+> it cannot attribute anything to memory.
+
 ---
 
 ## 1. What the paper claims
