@@ -153,7 +153,7 @@ Two different questions hide behind "keyed on `sha256(uuid)`":
    checked further.
 2. **UUID ambiguity** — the *same* uuid appearing in more than one distinct CDM record. This is
    real in DARPA TC (see
-   [`code/scratchpad/data_import/notes/theia-node-uuid-ambiguity-rate.md`](../../../code/scratchpad/data_import/notes/theia-node-uuid-ambiguity-rate.md)),
+   [`DARPA-TC-E3/notes/theia-node-uuid-ambiguity-rate.md`](../../../DARPA-TC-E3/notes/theia-node-uuid-ambiguity-rate.md)),
    and because identity *is* the uuid, every such group necessarily collapses into one node.
 
 The importer makes the collapse explicit — a plain dict assignment keyed on the uuid, so the
@@ -193,7 +193,7 @@ mode, and it does not occur.
 
 **CADETS is unaffected in practice** — *by this mechanism*. All 53 of its merged file uuids carry **no path at all**
 (they are the near-empty placeholder records described in
-[`cadets-event-uuid-collision.md`](../../../code/scratchpad/data_import/notes/cadets-event-uuid-collision.md)),
+[`cadets-event-uuid-collision.md`](../../../DARPA-TC-E3/notes/cadets-event-uuid-collision.md)),
 so there is nothing for the overwrite to lose.
 
 Note the scope: that covers duplicate *FileObject records*. CADETS does not take file paths from
